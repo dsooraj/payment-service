@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+vars:
+  GREETING: Hello, world!
+
+tasks:
+  default:
+    desc: Print a greeting message
+    cmds:
+      - echo "{{.GREETING}}"
+    silent: true
+  build:
+    cmds:
+      - go build -o ./cmd/server .
+  
+  run:
+    cmds:
+      - go run ./cmd/server
+
+  debug:
+    cmds:
+      - dlv debug ./cmd/server --headless --listen=:2345 --api-version=2 --accept-multiclient
