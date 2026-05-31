@@ -18,6 +18,22 @@ type PaymentRequest struct {
 	Method   string  `json:"method"`
 }
 
+func (pr PaymentRequest) Validate() error {
+	if pr.Amount == 0 || pr.Amount < 0 {
+		return errors.New("Amount should be positive")
+	}
+
+	if pr.Currency == "" {
+		return errors.New("Currency is required")
+	}
+
+	if pr.Method == "" {
+		return errors.New("Method is required")
+	}
+
+	return nil
+}
+
 type Transaction struct {
 	Id       int     `json:"id"`
 	Amount   float64 `json:"amount"`
@@ -85,13 +101,15 @@ func main() {
 	initDatabase()
 	defer db.Close()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Welcome to Payment Service")
 	})
 
 	fmt.Println("Server running in port 8080")
 
-	http.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/payment", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -102,6 +120,14 @@ func main() {
 		err := json.NewDecoder(r.Body).Decode(&req)
 		if err != nil {
 			http.Error(w, "Incorrect body", http.StatusBadGateway)
+			return
+		}
+
+		if err = req.Validate(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": err.Error(),
+			})
 			return
 		}
 
@@ -152,7 +178,8 @@ func main() {
 		json.NewEncoder(w).Encode(tx)
 	})
 
-	err := http.ListenAndServe(":8080", nil)
+	wrappedMux := loggingMiddleware(mux)
+	err := http.ListenAndServe(":8080", wrappedMux)
 	if err != nil {
 		fmt.Println("Error starting server", err)
 	}
@@ -160,3 +187,13 @@ func main() {
 
 // To initialize: go mod init payment-service
 // To execute: go run main.go
+
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		next.ServeHTTP(w, r)
+
+		fmt.Printf("[API LOG] %s %s took %v", r.Method, r.URL, time.Since(start))
+	})
+}
