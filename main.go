@@ -1,12 +1,15 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
-	"sync"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type PaymentRequest struct {
@@ -42,12 +45,45 @@ func (mp *MockProcessor) Process(amount float64, currency string) (string, error
 }
 
 var (
-	transactionDb = make(map[int]Transaction)
-	nextId        = 1
-	mu            sync.Mutex
+	db      *sql.DB
+	gateway PaymentProcessor = &MockProcessor{}
 )
 
+func initDatabase() {
+	connStr := "postgres://appuser:secretpassword@localhost:5432/postgres?sslmode=disable"
+
+	var err error
+	db, err = sql.Open("pgx", connStr)
+	if err != nil {
+		log.Fatalf("Error opening connection %v", err)
+	}
+
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Error connecting to database %v", err)
+	}
+
+	query := `
+		CREATE TABLE IF NOT EXISTS transactions (
+			id SERIAL PRIMARY KEY,
+			amount NUMERIC(10, 2),
+			currency VARCHAR(10),
+			method VARCHAR(50),
+			status VARCHAR(20)
+		);
+	`
+
+	_, err = db.Exec(query)
+	if err != nil {
+		log.Fatalf("Error initializing table in database %v", err)
+	}
+	fmt.Println("Connected to database and established table")
+}
+
 func main() {
+
+	initDatabase()
+	defer db.Close()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Welcome to Payment Service")
@@ -69,29 +105,37 @@ func main() {
 			return
 		}
 
-		mu.Lock()
-		defer mu.Unlock()
-		tx := Transaction{
-			Id:       nextId,
-			Amount:   req.Amount,
-			Currency: req.Currency,
-			Method:   req.Method,
-			Status:   "completed",
-		}
-
-		transactionDb[nextId] = tx
-		nextId++
-
-		processer := MockProcessor{}
-		_, gatewayErr := processer.Process(req.Amount, req.Currency)
+		_, gatewayErr := gateway.Process(req.Amount, req.Currency)
 
 		status := "completed"
 		if gatewayErr != nil {
 			status = "failed"
 		}
 
+		query := `
+			INSERT INTO transactions (amount, currency, method, status)
+			VALUES ($1, $2, $3, $4)
+			RETURNING id
+		`
+
+		var newId int
+		dbErr := db.QueryRow(query, req.Amount, req.Currency, req.Method, status).Scan(&newId)
+		if dbErr != nil {
+			fmt.Printf("Error adding data to database %v", dbErr)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		tx := Transaction{
+			Id:       newId,
+			Amount:   req.Amount,
+			Currency: req.Currency,
+			Method:   req.Method,
+			Status:   status,
+		}
+
 		fmt.Printf("Processed payment %.2f %s %s. Status %s\n", req.Amount, req.Currency, req.Method, status)
-		fmt.Printf("Transaction Id %d. Total transactions: %d\n", nextId-1, len(transactionDb))
+		fmt.Printf("Transaction Id %d.\n", newId)
 
 		w.Header().Set("content-type", "application/json")
 
@@ -106,8 +150,6 @@ func main() {
 
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(tx)
-		// fmt.Fprint(w, "Payment received")
-
 	})
 
 	err := http.ListenAndServe(":8080", nil)

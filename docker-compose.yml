@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: secretpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../DB_DATA/payment-service:/var/lib/postgresql/data
+    network_mode: "host"
