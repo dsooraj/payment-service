@@ -3,7 +3,6 @@ FROM golang:1.25-alpine
 WORKDIR /app
 
 RUN go install github.com/air-verse/air@latest
-RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 ENV PATH="$PATH:/root/go/bin"
 
