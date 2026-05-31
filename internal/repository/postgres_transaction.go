@@ -29,8 +29,8 @@ func (ptx *PostgresTxRepository) GetByIdempotencyKey(key string) (*model.Transac
 		WHERE idempotency_key = $1;
 	`
 
-	var tx *model.Transaction
-	err := ptx.DB.QueryRow(query, key).Scan(&tx)
+	var tx model.Transaction
+	err := ptx.DB.QueryRow(query, key).Scan(&tx.Id, &tx.IdempotencyKey, &tx.Amount, &tx.Currency, &tx.Status, &tx.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -40,7 +40,7 @@ func (ptx *PostgresTxRepository) GetByIdempotencyKey(key string) (*model.Transac
 		return nil, err
 	}
 
-	return tx, nil
+	return &tx, nil
 }
 
 func (ptx *PostgresTxRepository) UpdateStatus(id int, status string, stripeId string) error {
