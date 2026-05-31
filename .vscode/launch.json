@@ -7,13 +7,14 @@
       "request": "attach",
       "mode": "remote",
       "host": "127.0.0.1",
-      "port": 2345,
-      "substitutePath": [
+      "port": 2345
+    },
     {
-      "from": "/app",
-      "to": "${workspaceFolder}"
-    }
-  ]
+      "name": "Debug Server",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/server"
     }
   ]
 }

@@ -57,6 +57,14 @@ func (h *PaymentHandler) HandleProcessPayment(w http.ResponseWriter, r *http.Req
 
 	tx, processErr := h.service.ProcessPayment(idempotencyKey, req.Amount, req.Currency)
 
+	if processErr != nil {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": processErr.Error(),
+		})
+		return
+	}
+
 	w.Header().Set("content-type", "application/json")
 
 	if tx.Status == "failed" {
